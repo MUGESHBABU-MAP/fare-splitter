@@ -7,6 +7,8 @@ export interface Expense {
   is_gift: boolean;
   gift_to: string[];
   joint_treat_shares?: Record<string, number>;
+  split_type?: 'equal' | 'percentage' | 'weight';
+  split_data?: Record<string, number>;
   notes: string;
 }
 
@@ -48,24 +50,46 @@ export const calculateBalances = (members: string[], expenses: Expense[]): Recor
 
     // Calculate what each person owes
     if (expense.is_gift) {
-      // For gifts, only the gift recipients "owe" (but it's tracked for transparency)
-      if (expense.gift_to.length > 0) {
-        const sharePerRecipient = expense.amount / expense.gift_to.length;
-        expense.gift_to.forEach(recipient => {
-          if (balances[recipient]) {
-            balances[recipient].owes += sharePerRecipient;
-          }
-        });
-      }
+      // For gifts, no one owes anything - it's a pure gift
+      // Gift recipients don't owe the gift amount
     } else {
       // Regular expense split among beneficiaries
       if (expense.beneficiaries.length > 0) {
-        const sharePerBeneficiary = expense.amount / expense.beneficiaries.length;
-        expense.beneficiaries.forEach(beneficiary => {
-          if (balances[beneficiary]) {
-            balances[beneficiary].owes += sharePerBeneficiary;
-          }
-        });
+        let totalOwed = 0;
+        
+        if (expense.split_type === 'percentage' && expense.split_data) {
+          // Percentage-based split
+          expense.beneficiaries.forEach(beneficiary => {
+            if (balances[beneficiary] && expense.split_data![beneficiary]) {
+              const owedAmount = (expense.amount * expense.split_data[beneficiary]) / 100;
+              balances[beneficiary].owes += owedAmount;
+              totalOwed += owedAmount;
+            }
+          });
+        } else if (expense.split_type === 'weight' && expense.split_data) {
+          // Weight-based split
+          const totalWeight = expense.beneficiaries.reduce((sum, member) => {
+            return sum + (expense.split_data![member] || 1);
+          }, 0);
+          
+          expense.beneficiaries.forEach(beneficiary => {
+            if (balances[beneficiary]) {
+              const weight = expense.split_data![beneficiary] || 1;
+              const owedAmount = (expense.amount * weight) / totalWeight;
+              balances[beneficiary].owes += owedAmount;
+              totalOwed += owedAmount;
+            }
+          });
+        } else {
+          // Equal split (default)
+          const sharePerBeneficiary = expense.amount / expense.beneficiaries.length;
+          expense.beneficiaries.forEach(beneficiary => {
+            if (balances[beneficiary]) {
+              balances[beneficiary].owes += sharePerBeneficiary;
+              totalOwed += sharePerBeneficiary;
+            }
+          });
+        }
       }
     }
   });

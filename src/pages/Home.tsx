@@ -2,9 +2,10 @@ import Header from "@/components/layout/Header";
 import HeroSection from "@/components/hero/HeroSection";
 import TripCard from "@/components/trip/TripCard";
 import { Button } from "@/components/ui/button";
-import { Plus, TestTube } from "lucide-react";
+import { Plus, TestTube, CheckCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { runCalculationTests } from "@/lib/test-calculations";
+import { testFormValidation } from "@/lib/form-validation-test";
 
 const Home = () => {
   // Mock data for recent trips
@@ -52,6 +53,10 @@ const Home = () => {
               <Button variant="outline" onClick={runCalculationTests}>
                 <TestTube className="w-4 h-4 mr-2" />
                 Test Calculations
+              </Button>
+              <Button variant="outline" onClick={testFormValidation}>
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Test Forms
               </Button>
               <Button variant="hero" asChild>
                 <Link to="/create">

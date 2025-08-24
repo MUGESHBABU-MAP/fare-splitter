@@ -233,7 +233,11 @@ const ExpenseSummary = ({ tripName, members, expenses, onImportExpenses, onUpdat
                       {expense.is_gift ? (
                         <div>Gift to: {expense.gift_to.join(', ')}</div>
                       ) : (
-                        <div>Split among {expense.beneficiaries.length} people</div>
+                        <div>
+                          {expense.split_type === 'percentage' ? 'Percentage split' : 
+                           expense.split_type === 'weight' ? 'Weight-based split' : 
+                           `Equal split among ${expense.beneficiaries.length} people`}
+                        </div>
                       )}
                     </div>
                     {(onUpdateExpense || onDeleteExpense) && (

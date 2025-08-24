@@ -21,11 +21,13 @@ const expenseSchema = z.object({
   expense_date: z.date(),
   paid_by: z.string().min(1, "Please select who paid"),
   amount: z.number().min(0.01, "Amount must be greater than 0"),
-  beneficiaries: z.array(z.string()).min(1, "Select at least one beneficiary"),
-  is_gift: z.boolean(),
-  gift_to: z.array(z.string()),
+  beneficiaries: z.array(z.string()).default([]),
+  is_gift: z.boolean().default(false),
+  gift_to: z.array(z.string()).default([]),
   joint_treat_shares: z.record(z.number()).optional(),
-  notes: z.string()
+  split_type: z.enum(['equal', 'percentage', 'weight']).default('equal'),
+  split_data: z.record(z.number()).optional(),
+  notes: z.string().default("")
 });
 
 type ExpenseFormData = z.infer<typeof expenseSchema>;
@@ -40,6 +42,8 @@ const ExpenseForm = ({ members, onSubmit, onCancel }: ExpenseFormProps) => {
   const [isGift, setIsGift] = useState(false);
   const [isJointTreat, setIsJointTreat] = useState(false);
   const [jointShares, setJointShares] = useState<Record<string, number>>({});
+  const [splitType, setSplitType] = useState<'equal' | 'percentage' | 'weight'>('equal');
+  const [splitData, setSplitData] = useState<Record<string, number>>({});
 
   const form = useForm<ExpenseFormData>({
     resolver: zodResolver(expenseSchema),
@@ -50,6 +54,8 @@ const ExpenseForm = ({ members, onSubmit, onCancel }: ExpenseFormProps) => {
       beneficiaries: [],
       is_gift: false,
       gift_to: [],
+      split_type: 'equal',
+      split_data: {},
       notes: ""
     }
   });
@@ -58,7 +64,9 @@ const ExpenseForm = ({ members, onSubmit, onCancel }: ExpenseFormProps) => {
     const finalData = {
       ...data,
       is_gift: isGift,
-      joint_treat_shares: isJointTreat ? jointShares : undefined
+      joint_treat_shares: isJointTreat ? jointShares : undefined,
+      split_type: isGift ? undefined : splitType,
+      split_data: isGift ? undefined : (splitType !== 'equal' ? splitData : undefined)
     };
     onSubmit(finalData);
   };
@@ -83,6 +91,30 @@ const ExpenseForm = ({ members, onSubmit, onCancel }: ExpenseFormProps) => {
 
   const updateJointShare = (member: string, share: number) => {
     setJointShares(prev => ({ ...prev, [member]: share }));
+  };
+
+  const updateSplitData = (member: string, value: number) => {
+    setSplitData(prev => ({ ...prev, [member]: value }));
+  };
+
+  const validateSplitData = () => {
+    if (splitType === 'percentage') {
+      const beneficiaries = form.getValues("beneficiaries");
+      const total = beneficiaries.reduce((sum, member) => sum + (splitData[member] || 0), 0);
+      return Math.abs(total - 100) < 0.01;
+    }
+    return true;
+  };
+
+  const canSubmit = () => {
+    const beneficiaries = form.getValues("beneficiaries");
+    const giftTo = form.getValues("gift_to");
+    
+    if (isGift) {
+      return giftTo.length > 0;
+    } else {
+      return beneficiaries.length > 0 && (splitType !== 'percentage' || validateSplitData());
+    }
   };
 
   return (
@@ -168,7 +200,17 @@ const ExpenseForm = ({ members, onSubmit, onCancel }: ExpenseFormProps) => {
             <Switch
               id="is-gift"
               checked={isGift}
-              onCheckedChange={setIsGift}
+              onCheckedChange={(checked) => {
+                setIsGift(checked);
+                form.setValue("is_gift", checked);
+                if (checked) {
+                  form.setValue("beneficiaries", []);
+                  setSplitType('equal');
+                  setSplitData({});
+                } else {
+                  form.setValue("gift_to", []);
+                }
+              }}
             />
             <Label htmlFor="is-gift">This is a gift</Label>
           </div>
@@ -179,7 +221,12 @@ const ExpenseForm = ({ members, onSubmit, onCancel }: ExpenseFormProps) => {
               <Switch
                 id="joint-treat"
                 checked={isJointTreat}
-                onCheckedChange={setIsJointTreat}
+                onCheckedChange={(checked) => {
+                  setIsJointTreat(checked);
+                  if (!checked) {
+                    setJointShares({});
+                  }
+                }}
               />
               <Label htmlFor="joint-treat">Joint treat (multiple sponsors)</Label>
             </div>
@@ -231,26 +278,69 @@ const ExpenseForm = ({ members, onSubmit, onCancel }: ExpenseFormProps) => {
 
           {/* Beneficiaries */}
           {!isGift && (
-            <div className="space-y-3">
-              <Label>Split Among (Beneficiaries)</Label>
-              <div className="grid grid-cols-2 gap-2">
-                {members.map((member) => (
-                  <div key={member} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`beneficiary-${member}`}
-                      onCheckedChange={(checked) => 
-                        toggleBeneficiary(member, checked as boolean)
-                      }
-                    />
-                    <Label htmlFor={`beneficiary-${member}`} className="text-sm">
-                      {member}
-                    </Label>
-                  </div>
-                ))}
+            <div className="space-y-4">
+              <div className="space-y-3">
+                <Label>Split Type</Label>
+                <Select value={splitType} onValueChange={(value: 'equal' | 'percentage' | 'weight') => {
+                  setSplitType(value);
+                  if (value === 'equal') {
+                    setSplitData({});
+                  }
+                }}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="equal">Equal Split</SelectItem>
+                    <SelectItem value="percentage">Percentage Split</SelectItem>
+                    <SelectItem value="weight">Weight-based Split</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              {form.formState.errors.beneficiaries && (
-                <p className="text-sm text-red-500">{form.formState.errors.beneficiaries.message}</p>
-              )}
+              
+              <div className="space-y-3">
+                <Label>Split Among (Beneficiaries)</Label>
+                <div className="space-y-2">
+                  {members.map((member) => (
+                    <div key={member} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`beneficiary-${member}`}
+                        checked={form.watch("beneficiaries").includes(member)}
+                        onCheckedChange={(checked) => 
+                          toggleBeneficiary(member, checked as boolean)
+                        }
+                      />
+                      <Label htmlFor={`beneficiary-${member}`} className="w-20 text-sm">
+                        {member}
+                      </Label>
+                      {form.watch("beneficiaries").includes(member) && splitType !== 'equal' && (
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder={splitType === 'percentage' ? '25.00' : '1.0'}
+                          value={splitData[member] || ''}
+                          onChange={(e) => updateSplitData(member, parseFloat(e.target.value) || 0)}
+                          className="w-20"
+                        />
+                      )}
+                      {splitType === 'percentage' && form.watch("beneficiaries").includes(member) && (
+                        <span className="text-xs text-muted-foreground">%</span>
+                      )}
+                      {splitType === 'weight' && form.watch("beneficiaries").includes(member) && (
+                        <span className="text-xs text-muted-foreground">x</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {splitType === 'percentage' && (
+                  <p className="text-xs text-muted-foreground">
+                    Total: {form.watch("beneficiaries").reduce((sum, member) => sum + (splitData[member] || 0), 0).toFixed(1)}% (should equal 100%)
+                  </p>
+                )}
+                {form.formState.errors.beneficiaries && (
+                  <p className="text-sm text-red-500">{form.formState.errors.beneficiaries.message}</p>
+                )}
+              </div>
             </div>
           )}
 
@@ -266,7 +356,11 @@ const ExpenseForm = ({ members, onSubmit, onCancel }: ExpenseFormProps) => {
 
           {/* Actions */}
           <div className="flex gap-3 pt-4">
-            <Button type="submit" className="flex-1">
+            <Button 
+              type="submit" 
+              className="flex-1"
+              disabled={!canSubmit()}
+            >
               Add Expense
             </Button>
             <Button type="button" variant="outline" onClick={onCancel}>

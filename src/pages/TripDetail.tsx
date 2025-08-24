@@ -33,6 +33,8 @@ interface Expense {
   is_gift: boolean;
   gift_to: string[];
   joint_treat_shares?: Record<string, number> | null;
+  split_type?: 'equal' | 'percentage' | 'weight';
+  split_data?: Record<string, number> | null;
   notes: string;
 }
 
@@ -78,12 +80,21 @@ const TripDetail = () => {
       if (expensesError) throw expensesError;
       
       // Transform expenses data
-      const transformedExpenses: Expense[] = (expensesData || []).map(expense => ({
-        ...expense,
-        beneficiaries: Array.isArray(expense.beneficiaries) ? expense.beneficiaries.filter(b => typeof b === 'string') as string[] : [],
-        gift_to: Array.isArray(expense.gift_to) ? expense.gift_to.filter(g => typeof g === 'string') as string[] : [],
-        notes: expense.notes || ''
-      }));
+      const transformedExpenses: Expense[] = (expensesData || []).map(expense => {
+        const jointShares = expense.joint_treat_shares as any;
+        const splitType = jointShares?._split_type || 'equal';
+        const splitData = jointShares?._split_data || null;
+        
+        return {
+          ...expense,
+          beneficiaries: Array.isArray(expense.beneficiaries) ? expense.beneficiaries.filter(b => typeof b === 'string') as string[] : [],
+          gift_to: Array.isArray(expense.gift_to) ? expense.gift_to.filter(g => typeof g === 'string') as string[] : [],
+          split_type: splitType,
+          split_data: splitData,
+          joint_treat_shares: jointShares ? Object.fromEntries(Object.entries(jointShares).filter(([k]) => !k.startsWith('_'))) : null,
+          notes: expense.notes || ''
+        };
+      });
       setExpenses(transformedExpenses);
     } catch (error) {
       console.error('Error fetching trip data:', error);
@@ -99,29 +110,48 @@ const TripDetail = () => {
 
   const handleAddExpense = async (expenseData: any) => {
     try {
+      // Store split data in joint_treat_shares temporarily
+      let jointTreatData = expenseData.joint_treat_shares || null;
+      if (!expenseData.is_gift && expenseData.split_type !== 'equal' && expenseData.split_data) {
+        jointTreatData = {
+          _split_type: expenseData.split_type,
+          _split_data: expenseData.split_data,
+          ...expenseData.joint_treat_shares
+        };
+      }
+
+      const insertData = {
+        trip_id: id!,
+        expense_date: expenseData.expense_date.toISOString().split('T')[0],
+        paid_by: expenseData.paid_by,
+        amount: expenseData.amount,
+        beneficiaries: expenseData.beneficiaries || [],
+        is_gift: expenseData.is_gift || false,
+        gift_to: expenseData.gift_to || [],
+        joint_treat_shares: jointTreatData,
+        notes: expenseData.notes || ''
+      };
+
       const { data, error } = await supabase
         .from('expenses')
-        .insert({
-          trip_id: id!,
-          expense_date: expenseData.expense_date.toISOString().split('T')[0],
-          paid_by: expenseData.paid_by,
-          amount: expenseData.amount,
-          beneficiaries: expenseData.beneficiaries,
-          is_gift: expenseData.is_gift,
-          gift_to: expenseData.gift_to || [],
-          joint_treat_shares: expenseData.joint_treat_shares || null,
-          notes: expenseData.notes || ''
-        })
+        .insert(insertData)
         .select()
         .single();
 
       if (error) throw error;
 
-      // Transform and add to local state
+      // Extract split data from joint_treat_shares
+      const jointShares = data.joint_treat_shares as any;
+      const splitType = jointShares?._split_type || 'equal';
+      const splitData = jointShares?._split_data || null;
+      
       const newExpense: Expense = {
         ...data,
         beneficiaries: Array.isArray(data.beneficiaries) ? data.beneficiaries.filter(b => typeof b === 'string') as string[] : [],
         gift_to: Array.isArray(data.gift_to) ? data.gift_to.filter(g => typeof g === 'string') as string[] : [],
+        split_type: splitType,
+        split_data: splitData,
+        joint_treat_shares: jointShares ? Object.fromEntries(Object.entries(jointShares).filter(([k]) => !k.startsWith('_'))) : null,
         notes: data.notes || ''
       };
       
@@ -146,28 +176,48 @@ const TripDetail = () => {
 
   const handleUpdateExpense = async (id: string, expenseData: any) => {
     try {
+      // Store split data in joint_treat_shares temporarily
+      let jointTreatData = expenseData.joint_treat_shares || null;
+      if (!expenseData.is_gift && expenseData.split_type !== 'equal' && expenseData.split_data) {
+        jointTreatData = {
+          _split_type: expenseData.split_type,
+          _split_data: expenseData.split_data,
+          ...expenseData.joint_treat_shares
+        };
+      }
+
+      const updateData = {
+        expense_date: expenseData.expense_date.toISOString().split('T')[0],
+        paid_by: expenseData.paid_by,
+        amount: expenseData.amount,
+        beneficiaries: expenseData.beneficiaries || [],
+        is_gift: expenseData.is_gift || false,
+        gift_to: expenseData.gift_to || [],
+        joint_treat_shares: jointTreatData,
+        notes: expenseData.notes || ''
+      };
+
       const { data, error } = await supabase
         .from('expenses')
-        .update({
-          expense_date: expenseData.expense_date.toISOString().split('T')[0],
-          paid_by: expenseData.paid_by,
-          amount: expenseData.amount,
-          beneficiaries: expenseData.beneficiaries,
-          is_gift: expenseData.is_gift,
-          gift_to: expenseData.gift_to || [],
-          joint_treat_shares: expenseData.joint_treat_shares || null,
-          notes: expenseData.notes || ''
-        })
+        .update(updateData)
         .eq('id', id)
         .select()
         .single();
 
       if (error) throw error;
 
+      // Extract split data from joint_treat_shares
+      const jointShares = data.joint_treat_shares as any;
+      const splitType = jointShares?._split_type || 'equal';
+      const splitData = jointShares?._split_data || null;
+      
       const updatedExpense: Expense = {
         ...data,
         beneficiaries: Array.isArray(data.beneficiaries) ? data.beneficiaries.filter(b => typeof b === 'string') as string[] : [],
         gift_to: Array.isArray(data.gift_to) ? data.gift_to.filter(g => typeof g === 'string') as string[] : [],
+        split_type: splitType,
+        split_data: splitData,
+        joint_treat_shares: jointShares ? Object.fromEntries(Object.entries(jointShares).filter(([k]) => !k.startsWith('_'))) : null,
         notes: data.notes || ''
       };
       
@@ -238,6 +288,8 @@ const TripDetail = () => {
         ...expense,
         beneficiaries: Array.isArray(expense.beneficiaries) ? expense.beneficiaries.filter(b => typeof b === 'string') as string[] : [],
         gift_to: Array.isArray(expense.gift_to) ? expense.gift_to.filter(g => typeof g === 'string') as string[] : [],
+        split_type: expense.split_type || 'equal',
+        split_data: expense.split_data || null,
         notes: expense.notes || ''
       }));
       
