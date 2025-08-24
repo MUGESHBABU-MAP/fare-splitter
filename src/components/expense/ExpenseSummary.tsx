@@ -2,9 +2,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Download, Upload, Calculator, TrendingUp, TrendingDown } from "lucide-react";
+import { Download, Upload, Calculator, TrendingUp, TrendingDown, Edit, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import EditExpenseForm from "./EditExpenseForm";
+import { useState } from "react";
 import { calculateBalances, calculateSettlements, exportToExcel, type Expense } from "@/lib/settlement";
 
 interface ExpenseSummaryProps {
@@ -12,10 +15,13 @@ interface ExpenseSummaryProps {
   members: string[];
   expenses: Expense[];
   onImportExpenses?: (expenses: Expense[]) => void;
+  onUpdateExpense?: (id: string, data: any) => void;
+  onDeleteExpense?: (id: string) => void;
 }
 
-const ExpenseSummary = ({ tripName, members, expenses, onImportExpenses }: ExpenseSummaryProps) => {
+const ExpenseSummary = ({ tripName, members, expenses, onImportExpenses, onUpdateExpense, onDeleteExpense }: ExpenseSummaryProps) => {
   const { toast } = useToast();
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const balances = calculateBalances(members, expenses);
   const settlements = calculateSettlements(balances);
   const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
@@ -222,11 +228,35 @@ const ExpenseSummary = ({ tripName, members, expenses, onImportExpenses }: Expen
                       <div className="text-sm text-muted-foreground mt-1">{expense.notes}</div>
                     )}
                   </div>
-                  <div className="text-right text-sm">
-                    {expense.is_gift ? (
-                      <div>Gift to: {expense.gift_to.join(', ')}</div>
-                    ) : (
-                      <div>Split among {expense.beneficiaries.length} people</div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right text-sm">
+                      {expense.is_gift ? (
+                        <div>Gift to: {expense.gift_to.join(', ')}</div>
+                      ) : (
+                        <div>Split among {expense.beneficiaries.length} people</div>
+                      )}
+                    </div>
+                    {(onUpdateExpense || onDeleteExpense) && (
+                      <div className="flex gap-1">
+                        {onUpdateExpense && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingExpense(expense)}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {onDeleteExpense && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onDeleteExpense(expense.id)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -239,6 +269,27 @@ const ExpenseSummary = ({ tripName, members, expenses, onImportExpenses }: Expen
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Expense Dialog */}
+      <Dialog open={!!editingExpense} onOpenChange={() => setEditingExpense(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          {editingExpense && onUpdateExpense && onDeleteExpense && (
+            <EditExpenseForm
+              expense={editingExpense}
+              members={members}
+              onUpdate={(id, data) => {
+                onUpdateExpense(id, data);
+                setEditingExpense(null);
+              }}
+              onDelete={(id) => {
+                onDeleteExpense(id);
+                setEditingExpense(null);
+              }}
+              onCancel={() => setEditingExpense(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

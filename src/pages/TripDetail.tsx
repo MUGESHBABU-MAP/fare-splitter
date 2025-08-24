@@ -144,6 +144,74 @@ const TripDetail = () => {
 
   const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
 
+  const handleUpdateExpense = async (id: string, expenseData: any) => {
+    try {
+      const { data, error } = await supabase
+        .from('expenses')
+        .update({
+          expense_date: expenseData.expense_date.toISOString().split('T')[0],
+          paid_by: expenseData.paid_by,
+          amount: expenseData.amount,
+          beneficiaries: expenseData.beneficiaries,
+          is_gift: expenseData.is_gift,
+          gift_to: expenseData.gift_to || [],
+          joint_treat_shares: expenseData.joint_treat_shares || null,
+          notes: expenseData.notes || ''
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const updatedExpense: Expense = {
+        ...data,
+        beneficiaries: Array.isArray(data.beneficiaries) ? data.beneficiaries.filter(b => typeof b === 'string') as string[] : [],
+        gift_to: Array.isArray(data.gift_to) ? data.gift_to.filter(g => typeof g === 'string') as string[] : [],
+        notes: data.notes || ''
+      };
+      
+      setExpenses(prev => prev.map(exp => exp.id === id ? updatedExpense : exp));
+      
+      toast({
+        title: "Expense updated!",
+        description: `₹${expenseData.amount} expense updated successfully`
+      });
+    } catch (error) {
+      console.error('Error updating expense:', error);
+      toast({
+        title: "Update failed",
+        description: "Could not update expense",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleDeleteExpense = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('expenses')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      
+      setExpenses(prev => prev.filter(exp => exp.id !== id));
+      
+      toast({
+        title: "Expense deleted!",
+        description: "Expense removed successfully"
+      });
+    } catch (error) {
+      console.error('Error deleting expense:', error);
+      toast({
+        title: "Delete failed",
+        description: "Could not delete expense",
+        variant: "destructive"
+      });
+    }
+  };
+
   const handleImportExpenses = async (importedExpenses: Expense[]) => {
     try {
       // Insert imported expenses into database
@@ -269,6 +337,8 @@ const TripDetail = () => {
           members={trip.members}
           expenses={expenses}
           onImportExpenses={handleImportExpenses}
+          onUpdateExpense={handleUpdateExpense}
+          onDeleteExpense={handleDeleteExpense}
         />
       </div>
     </div>
