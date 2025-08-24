@@ -4,9 +4,12 @@ import Header from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { ArrowLeft, Plus, Users, Calculator, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import ExpenseForm from "@/components/expense/ExpenseForm";
+import ExpenseSummary from "@/components/expense/ExpenseSummary";
 import type { Database } from "@/integrations/supabase/types";
 
 type DbTrip = Database['public']['Tables']['trips']['Row'];
@@ -29,6 +32,7 @@ interface Expense {
   beneficiaries: string[];
   is_gift: boolean;
   gift_to: string[];
+  joint_treat_shares?: Record<string, number> | null;
   notes: string;
 }
 
@@ -38,6 +42,7 @@ const TripDetail = () => {
   const [trip, setTrip] = useState<Trip | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showExpenseForm, setShowExpenseForm] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -92,38 +97,96 @@ const TripDetail = () => {
     }
   };
 
-  const calculateSummary = () => {
-    if (!trip) return { totalExpenses: 0, memberBalances: {} };
-    
-    const memberBalances: Record<string, { paid: number; owes: number }> = {};
-    
-    // Initialize balances for all members
-    trip.members.forEach(member => {
-      memberBalances[member] = { paid: 0, owes: 0 };
-    });
+  const handleAddExpense = async (expenseData: any) => {
+    try {
+      const { data, error } = await supabase
+        .from('expenses')
+        .insert({
+          trip_id: id!,
+          expense_date: expenseData.expense_date.toISOString().split('T')[0],
+          paid_by: expenseData.paid_by,
+          amount: expenseData.amount,
+          beneficiaries: expenseData.beneficiaries,
+          is_gift: expenseData.is_gift,
+          gift_to: expenseData.gift_to || [],
+          joint_treat_shares: expenseData.joint_treat_shares || null,
+          notes: expenseData.notes || ''
+        })
+        .select()
+        .single();
 
-    let totalExpenses = 0;
+      if (error) throw error;
 
-    expenses.forEach(expense => {
-      totalExpenses += expense.amount;
+      // Transform and add to local state
+      const newExpense: Expense = {
+        ...data,
+        beneficiaries: Array.isArray(data.beneficiaries) ? data.beneficiaries.filter(b => typeof b === 'string') as string[] : [],
+        gift_to: Array.isArray(data.gift_to) ? data.gift_to.filter(g => typeof g === 'string') as string[] : [],
+        notes: data.notes || ''
+      };
       
-      // Add to paid amount for the person who paid
-      if (memberBalances[expense.paid_by]) {
-        memberBalances[expense.paid_by].paid += expense.amount;
-      }
+      setExpenses(prev => [newExpense, ...prev]);
+      setShowExpenseForm(false);
+      
+      toast({
+        title: "Expense added successfully!",
+        description: `₹${expenseData.amount} expense recorded`
+      });
+    } catch (error) {
+      console.error('Error adding expense:', error);
+      toast({
+        title: "Error adding expense",
+        description: "Please try again",
+        variant: "destructive"
+      });
+    }
+  };
 
-      // Calculate what each beneficiary owes
-      if (!expense.is_gift && expense.beneficiaries.length > 0) {
-        const sharePerPerson = expense.amount / expense.beneficiaries.length;
-        expense.beneficiaries.forEach(beneficiary => {
-          if (memberBalances[beneficiary]) {
-            memberBalances[beneficiary].owes += sharePerPerson;
-          }
-        });
-      }
-    });
+  const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
 
-    return { totalExpenses, memberBalances };
+  const handleImportExpenses = async (importedExpenses: Expense[]) => {
+    try {
+      // Insert imported expenses into database
+      const expensesToInsert = importedExpenses.map(expense => ({
+        trip_id: id!,
+        expense_date: expense.expense_date,
+        paid_by: expense.paid_by,
+        amount: expense.amount,
+        beneficiaries: expense.beneficiaries,
+        is_gift: expense.is_gift,
+        gift_to: expense.gift_to,
+        notes: expense.notes
+      }));
+
+      const { data, error } = await supabase
+        .from('expenses')
+        .insert(expensesToInsert)
+        .select();
+
+      if (error) throw error;
+
+      // Transform and add to local state
+      const newExpenses: Expense[] = (data || []).map(expense => ({
+        ...expense,
+        beneficiaries: Array.isArray(expense.beneficiaries) ? expense.beneficiaries.filter(b => typeof b === 'string') as string[] : [],
+        gift_to: Array.isArray(expense.gift_to) ? expense.gift_to.filter(g => typeof g === 'string') as string[] : [],
+        notes: expense.notes || ''
+      }));
+      
+      setExpenses(prev => [...newExpenses, ...prev]);
+      
+      toast({
+        title: "Import successful!",
+        description: `Added ${newExpenses.length} expenses to the trip`
+      });
+    } catch (error) {
+      console.error('Error importing expenses:', error);
+      toast({
+        title: "Import failed",
+        description: "Could not import expenses to database",
+        variant: "destructive"
+      });
+    }
   };
 
   if (loading) {
@@ -151,7 +214,7 @@ const TripDetail = () => {
     );
   }
 
-  const { totalExpenses, memberBalances } = calculateSummary();
+
 
   return (
     <div className="min-h-screen bg-background">
@@ -182,77 +245,31 @@ const TripDetail = () => {
                 </Badge>
               </div>
             </div>
-            <Button variant="hero">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Expense
-            </Button>
+            <Dialog open={showExpenseForm} onOpenChange={setShowExpenseForm}>
+              <DialogTrigger asChild>
+                <Button variant="hero">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Expense
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                <ExpenseForm
+                  members={trip.members}
+                  onSubmit={handleAddExpense}
+                  onCancel={() => setShowExpenseForm(false)}
+                />
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Members Summary */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Members</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {trip.members.map((member, index) => (
-                  <div key={index} className="flex justify-between items-center p-2 bg-muted/50 rounded">
-                    <span className="font-medium">{member}</span>
-                    <div className="text-sm text-muted-foreground">
-                      {memberBalances[member] && (
-                        <span>
-                          Paid: ₹{memberBalances[member].paid.toFixed(0)} | 
-                          Owes: ₹{memberBalances[member].owes.toFixed(0)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Recent Expenses */}
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle>Recent Expenses</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {expenses.length > 0 ? (
-                <div className="space-y-3">
-                  {expenses.slice(0, 5).map((expense) => (
-                    <div key={expense.id} className="flex justify-between items-center p-3 border rounded">
-                      <div>
-                        <div className="font-medium">₹{expense.amount}</div>
-                        <div className="text-sm text-muted-foreground">
-                          Paid by {expense.paid_by} • {new Date(expense.expense_date).toLocaleDateString()}
-                        </div>
-                        {expense.notes && (
-                          <div className="text-sm text-muted-foreground">{expense.notes}</div>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm">
-                          {expense.is_gift ? `Gift to ${expense.gift_to.join(', ')}` : `Split among ${expense.beneficiaries.length}`}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground mb-4">No expenses added yet</p>
-                  <Button variant="outline">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add First Expense
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        {/* Expense Summary */}
+        <ExpenseSummary
+          tripName={trip.name}
+          members={trip.members}
+          expenses={expenses}
+          onImportExpenses={handleImportExpenses}
+        />
       </div>
     </div>
   );
