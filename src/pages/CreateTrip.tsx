@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 import Header from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,7 +42,7 @@ const CreateTrip = () => {
     setMembers(newMembers);
   };
 
-  const handleCreateTrip = () => {
+  const handleCreateTrip = async () => {
     if (!tripName.trim()) {
       toast({
         title: "Trip name required",
@@ -61,14 +62,34 @@ const CreateTrip = () => {
       return;
     }
 
-    // Here you would save to IndexedDB
-    toast({
-      title: "Trip created successfully!",
-      description: `${tripName} with ${filledMembers.length} members`,
-    });
+    try {
+      const { data, error } = await supabase
+        .from('trips')
+        .insert({
+          name: tripName.trim(),
+          member_count: filledMembers.length,
+          members: filledMembers
+        })
+        .select()
+        .single();
 
-    // Navigate to trip details (mock ID for now)
-    navigate(`/trip/new-trip-id`);
+      if (error) throw error;
+
+      toast({
+        title: "Trip created successfully!",
+        description: `${tripName} with ${filledMembers.length} members`,
+      });
+
+      // Navigate to the created trip
+      navigate(`/trip/${data.id}`);
+    } catch (error) {
+      console.error('Error creating trip:', error);
+      toast({
+        title: "Error creating trip",
+        description: "Please try again",
+        variant: "destructive"
+      });
+    }
   };
 
   return (
