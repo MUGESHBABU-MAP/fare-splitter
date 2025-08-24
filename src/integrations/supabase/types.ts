@@ -14,7 +14,86 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      expenses: {
+        Row: {
+          amount: number
+          beneficiaries: Json
+          created_at: string
+          expense_date: string
+          gift_to: Json | null
+          id: string
+          is_gift: boolean
+          joint_treat_shares: Json | null
+          notes: string | null
+          paid_by: string
+          trip_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          beneficiaries?: Json
+          created_at?: string
+          expense_date?: string
+          gift_to?: Json | null
+          id?: string
+          is_gift?: boolean
+          joint_treat_shares?: Json | null
+          notes?: string | null
+          paid_by: string
+          trip_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          beneficiaries?: Json
+          created_at?: string
+          expense_date?: string
+          gift_to?: Json | null
+          id?: string
+          is_gift?: boolean
+          joint_treat_shares?: Json | null
+          notes?: string | null
+          paid_by?: string
+          trip_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trips: {
+        Row: {
+          created_at: string
+          id: string
+          member_count: number
+          members: Json
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          member_count: number
+          members?: Json
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          member_count?: number
+          members?: Json
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
