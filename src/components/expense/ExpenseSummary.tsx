@@ -22,6 +22,7 @@ interface ExpenseSummaryProps {
 const ExpenseSummary = ({ tripName, members, expenses, onImportExpenses, onUpdateExpense, onDeleteExpense }: ExpenseSummaryProps) => {
   const { toast } = useToast();
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [showAllExpenses, setShowAllExpenses] = useState(false);
   const balances = calculateBalances(members, expenses);
   const settlements = calculateSettlements(balances);
   const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
@@ -206,13 +207,22 @@ const ExpenseSummary = ({ tripName, members, expenses, onImportExpenses, onUpdat
 
       {/* Recent Expenses */}
       <Card>
-        <CardHeader>
-          <CardTitle>Recent Expenses</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>{showAllExpenses ? 'All Expenses' : 'Recent Expenses'}</CardTitle>
+          {expenses.length > 10 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAllExpenses(!showAllExpenses)}
+            >
+              {showAllExpenses ? `Show Recent (${Math.min(10, expenses.length)})` : `Show All (${expenses.length})`}
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           {expenses.length > 0 ? (
             <div className="space-y-3">
-              {expenses.slice(0, 10).map((expense) => (
+              {(showAllExpenses ? expenses : expenses.slice(0, 10)).map((expense) => (
                 <div key={expense.id} className="flex items-center justify-between p-3 border rounded-lg">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
