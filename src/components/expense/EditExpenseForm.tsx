@@ -228,7 +228,24 @@ const EditExpenseForm = ({ expense, members, onUpdate, onDelete, onCancel }: Edi
 
           {isGift && (
             <div className="space-y-3">
-              <Label>Gift To</Label>
+              <div className="flex items-center justify-between">
+                <Label>Gift To</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const allSelected = members.every(member => form.getValues("gift_to").includes(member));
+                    if (allSelected) {
+                      form.setValue("gift_to", []);
+                    } else {
+                      form.setValue("gift_to", members);
+                    }
+                  }}
+                >
+                  {members.every(member => form.getValues("gift_to").includes(member)) ? 'Deselect All' : 'Select All'}
+                </Button>
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 {members.map((member) => (
                   <div key={member} className="flex items-center space-x-2">
@@ -290,7 +307,24 @@ const EditExpenseForm = ({ expense, members, onUpdate, onDelete, onCancel }: Edi
               </div>
               
               <div className="space-y-3">
-                <Label>Split Among (Beneficiaries)</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Split Among (Beneficiaries)</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const allSelected = members.every(member => form.getValues("beneficiaries").includes(member));
+                      if (allSelected) {
+                        form.setValue("beneficiaries", []);
+                      } else {
+                        form.setValue("beneficiaries", members);
+                      }
+                    }}
+                  >
+                    {members.every(member => form.getValues("beneficiaries").includes(member)) ? 'Deselect All' : 'Select All'}
+                  </Button>
+                </div>
                 <div className="space-y-2">
                   {members.map((member) => (
                     <div key={member} className="flex items-center space-x-2">

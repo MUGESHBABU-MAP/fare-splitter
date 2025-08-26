@@ -148,16 +148,27 @@ export const exportToExcel = async (tripName: string, members: string[], expense
   
   const workbook = XLSX.utils.book_new();
   
-  // Expenses sheet
-  const expensesData = expenses.map(expense => ({
-    Date: new Date(expense.expense_date).toLocaleDateString(),
-    'Paid By': expense.paid_by,
-    Amount: expense.amount,
-    Beneficiaries: expense.beneficiaries.join(', '),
-    'Is Gift': expense.is_gift ? 'Yes' : 'No',
-    'Gift To': expense.gift_to.join(', '),
-    Notes: expense.notes
-  }));
+  // Expenses sheet - compatible with import format
+  const expensesData = expenses.map(expense => {
+    let splitData = '';
+    if (expense.split_type !== 'equal' && expense.split_data) {
+      splitData = Object.entries(expense.split_data)
+        .map(([member, value]) => `${member}:${value}`)
+        .join(',');
+    }
+    
+    return {
+      Date: expense.expense_date,
+      'Paid By': expense.paid_by,
+      Amount: expense.amount,
+      Beneficiaries: expense.beneficiaries.join(', '),
+      'Is Gift': expense.is_gift ? 'Yes' : 'No',
+      'Gift To': expense.gift_to.join(', '),
+      'Split Type': expense.split_type || 'equal',
+      'Split Data': splitData,
+      Notes: expense.notes
+    };
+  });
   
   const expensesSheet = XLSX.utils.json_to_sheet(expensesData);
   XLSX.utils.book_append_sheet(workbook, expensesSheet, 'Expenses');

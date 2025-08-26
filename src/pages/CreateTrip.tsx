@@ -8,8 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { Plus, X, Users, ArrowRight } from "lucide-react";
+import { Plus, X, Users, ArrowRight, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import ImportExpensesDialog from "@/components/trip/ImportExpensesDialog";
+import type { Expense } from "@/lib/settlement";
 
 const CreateTrip = () => {
   const navigate = useNavigate();
@@ -17,6 +19,8 @@ const CreateTrip = () => {
   const [tripName, setTripName] = useState("");
   const [memberCount, setMemberCount] = useState(4);
   const [members, setMembers] = useState<string[]>(["", "", "", ""]);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importedExpenses, setImportedExpenses] = useState<Expense[]>([]);
 
   const handleMemberCountChange = (count: number) => {
     if (count < 2 || count > 100) return;
@@ -75,9 +79,47 @@ const CreateTrip = () => {
 
       if (error) throw error;
 
+      // Add imported expenses if any
+      if (importedExpenses.length > 0) {
+        const expensesToInsert = importedExpenses.map(expense => {
+          let jointTreatData = null;
+          if (!expense.is_gift && expense.split_type !== 'equal' && expense.split_data) {
+            jointTreatData = {
+              _split_type: expense.split_type,
+              _split_data: expense.split_data
+            };
+          }
+
+          return {
+            trip_id: data.id,
+            expense_date: expense.expense_date,
+            paid_by: expense.paid_by,
+            amount: expense.amount,
+            beneficiaries: expense.beneficiaries,
+            is_gift: expense.is_gift,
+            gift_to: expense.gift_to,
+            joint_treat_shares: jointTreatData,
+            notes: expense.notes
+          };
+        });
+
+        const { error: expenseError } = await supabase
+          .from('expenses')
+          .insert(expensesToInsert);
+
+        if (expenseError) {
+          console.error('Error adding imported expenses:', expenseError);
+          toast({
+            title: "Trip created, but import failed",
+            description: "You can import expenses later from the trip page",
+            variant: "destructive"
+          });
+        }
+      }
+
       toast({
         title: "Trip created successfully!",
-        description: `${tripName} with ${filledMembers.length} members`,
+        description: `${tripName} with ${filledMembers.length} members${importedExpenses.length > 0 ? ` and ${importedExpenses.length} imported expenses` : ''}`,
       });
 
       // Navigate to the created trip
@@ -90,6 +132,27 @@ const CreateTrip = () => {
         variant: "destructive"
       });
     }
+  };
+
+  const handleImportExpenses = (expenses: Expense[], newMembers?: string[]) => {
+    setImportedExpenses(expenses);
+    
+    // Add new members to the trip members list
+    if (newMembers && newMembers.length > 0) {
+      const updatedMembers = [...members];
+      newMembers.forEach(newMember => {
+        if (!updatedMembers.includes(newMember)) {
+          updatedMembers.push(newMember);
+        }
+      });
+      setMembers(updatedMembers);
+      setMemberCount(updatedMembers.length);
+    }
+    
+    toast({
+      title: "Expenses ready for import",
+      description: `${expenses.length} expenses will be added when you create the trip${newMembers && newMembers.length > 0 ? ` (${newMembers.length} new members added)` : ''}`
+    });
   };
 
   return (
@@ -182,6 +245,31 @@ const CreateTrip = () => {
 
               <Separator />
 
+              {/* Import Expenses */}
+              <div className="space-y-3">
+                <Label>Import Expenses (Optional)</Label>
+                <div className="flex gap-3">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setShowImportDialog(true)}
+                    className="flex-1"
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    Import from Excel
+                  </Button>
+                  {importedExpenses.length > 0 && (
+                    <Badge variant="secondary" className="px-3 py-1">
+                      {importedExpenses.length} expenses ready
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Import pre-existing expenses from an Excel file
+                </p>
+              </div>
+
+              <Separator />
+
               {/* Create Button */}
               <Button 
                 variant="hero" 
@@ -189,12 +277,21 @@ const CreateTrip = () => {
                 className="w-full"
                 onClick={handleCreateTrip}
               >
-                Create Trip
+                Create Trip{importedExpenses.length > 0 ? ` with ${importedExpenses.length} Expenses` : ''}
                 <ArrowRight className="w-5 h-5 ml-2" />
               </Button>
             </CardContent>
           </Card>
         </div>
+
+        {/* Import Dialog */}
+        <ImportExpensesDialog
+          open={showImportDialog}
+          onOpenChange={setShowImportDialog}
+          tripName={tripName || 'New Trip'}
+          members={members.filter(m => m.trim())}
+          onImport={handleImportExpenses}
+        />
       </div>
     </div>
   );
